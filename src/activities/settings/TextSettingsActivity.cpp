@@ -298,7 +298,7 @@ void TextSettingsActivity::drawFooter() {
 
 void TextSettingsActivity::render(RenderLock&& lock) {
   if (optionPopup_.processRender(renderer, mappedInput)) return;  // picker draws over everything
-  UiTabListActivity::render(std::move(lock));
+  UiListActivity::render(std::move(lock));
 }
 
 // Font switching runs on the main task from loop(), which deliberately holds no
