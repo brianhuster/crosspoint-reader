@@ -126,7 +126,6 @@ void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, c
     const int sel = props.selectedIndex;
     if (sel >= prevTop && sel < prevTop + drawn) {
       n.top = prevTop;
-      n.followPending = false;
       props.topIndex = static_cast<uint16_t>(prevTop);
     }
   }
