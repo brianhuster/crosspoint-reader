@@ -596,5 +596,5 @@ void SettingsActivity::drawFooter() {
 
 void SettingsActivity::render(RenderLock&& lock) {
   if (optionPopup.processRender(renderer, mappedInput)) return;
-  UiTabListActivity::render(std::move(lock));
+  UiListActivity::render(std::move(lock));
 }
