@@ -103,10 +103,12 @@ bool Txt::streamTxtToHtml(const std::string& filepath, Print& out) {
 
   size_t outPos = 0;
   size_t totalBytesOut = 0;
+  bool outputOk = true;
   auto flushOut = [&]() {
     if (outPos > 0) {
-      out.write(outBuf.get(), outPos);
-      totalBytesOut += outPos;
+      const size_t written = out.write(outBuf.get(), outPos);
+      outputOk = outputOk && (written == outPos);
+      totalBytesOut += written;
       outPos = 0;
     }
   };
@@ -182,8 +184,17 @@ bool Txt::streamTxtToHtml(const std::string& filepath, Print& out) {
     }
   }
 
+  if (bytesRead < 0) {
+    LOG_ERR("TXT", "Read error while streaming TXT/MD: %s", filepath.c_str());
+    return false;
+  }
+
   writeStr("</p>\n</body>\n</html>\n");
   flushOut();
+  if (!outputOk) {
+    LOG_ERR("TXT", "Failed to stream complete HTML (write error or disk full)");
+    return false;
+  }
   LOG_DBG("TXT", "Converted TXT/MD to HTML in %lu ms (%zu bytes in -> %zu bytes out)", millis() - t0, srcSize,
           totalBytesOut);
   return true;
