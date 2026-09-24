@@ -711,35 +711,9 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds) const {
     return false;
   }
 
-  // If the cover file exists directly on the filesystem (e.g. companion cover for TXT/MD), convert it directly
-  if (Storage.exists(coverImageHref.c_str())) {
-    if (FsHelpers::hasJpgExtension(coverImageHref)) {
-      HalFile coverJpg, coverBmp;
-      if (!Storage.openFileForRead("EBP", coverImageHref, coverJpg) ||
-          !Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, originalThresholds), coverBmp)) {
-        return false;
-      }
-      return JpegToBmpConverter::jpegFileToBmpStream(coverJpg, coverBmp, cropped, originalThresholds);
-    } else if (FsHelpers::hasPngExtension(coverImageHref)) {
-      HalFile coverPng, coverBmp;
-      if (!Storage.openFileForRead("EBP", coverImageHref, coverPng) ||
-          !Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, originalThresholds), coverBmp)) {
-        return false;
-      }
-      return PngToBmpConverter::pngFileToBmpStream(coverPng, coverBmp, cropped, originalThresholds);
-    } else if (FsHelpers::hasBmpExtension(coverImageHref)) {
-      HalFile src, dst;
-      if (!Storage.openFileForRead("EBP", coverImageHref, src) ||
-          !Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, originalThresholds), dst)) {
-        return false;
-      }
-      uint8_t buf[512];
-      int n;
-      while ((n = src.read(buf, sizeof(buf))) > 0) {
-        dst.write(buf, n);
-      }
-      return true;
-    }
+  if (Txt::isTxtOrMd(filepath)) {
+    return Txt::convertCoverImageToBmp(coverImageHref, getCoverBmpPath(cropped, originalThresholds), 0, cropped,
+                                       originalThresholds);
   }
 
   if (FsHelpers::hasJpgExtension(coverImageHref)) {
@@ -864,41 +838,8 @@ bool Epub::generateThumbBmpForCover(int height, const std::string& coverImageHre
     return false;
   }
 
-  // If the cover file exists directly on the filesystem (e.g. companion cover for TXT/MD), convert it directly
-  if (Storage.exists(coverImageHref.c_str())) {
-    if (FsHelpers::hasJpgExtension(coverImageHref)) {
-      HalFile coverJpg, thumbBmp;
-      if (!Storage.openFileForRead("EBP", coverImageHref, coverJpg) ||
-          !Storage.openFileForWrite("EBP", getThumbBmpPath(height), thumbBmp)) {
-        return false;
-      }
-      int THUMB_TARGET_WIDTH = height * 0.6;
-      int THUMB_TARGET_HEIGHT = height;
-      return JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(coverJpg, thumbBmp, THUMB_TARGET_WIDTH,
-                                                                 THUMB_TARGET_HEIGHT);
-    } else if (FsHelpers::hasPngExtension(coverImageHref)) {
-      HalFile coverPng, thumbBmp;
-      if (!Storage.openFileForRead("EBP", coverImageHref, coverPng) ||
-          !Storage.openFileForWrite("EBP", getThumbBmpPath(height), thumbBmp)) {
-        return false;
-      }
-      int THUMB_TARGET_WIDTH = height * 0.6;
-      int THUMB_TARGET_HEIGHT = height;
-      return PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(coverPng, thumbBmp, THUMB_TARGET_WIDTH,
-                                                               THUMB_TARGET_HEIGHT);
-    } else if (FsHelpers::hasBmpExtension(coverImageHref)) {
-      HalFile src, dst;
-      if (!Storage.openFileForRead("EBP", coverImageHref, src) ||
-          !Storage.openFileForWrite("EBP", getThumbBmpPath(height), dst)) {
-        return false;
-      }
-      uint8_t buf[512];
-      int n;
-      while ((n = src.read(buf, sizeof(buf))) > 0) {
-        dst.write(buf, n);
-      }
-      return true;
-    }
+  if (Txt::isTxtOrMd(filepath)) {
+    return Txt::convertCoverImageToBmp(coverImageHref, getThumbBmpPath(height), height);
   }
 
   if (FsHelpers::hasJpgExtension(coverImageHref)) {

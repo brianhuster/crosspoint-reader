@@ -4,8 +4,10 @@
 #include <Epub/BookMetadataCache.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
+#include <JpegToBmpConverter.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <PngToBmpConverter.h>
 #include <Utf8.h>
 
 bool Txt::isTxtOrMd(std::string_view path) {
@@ -34,6 +36,48 @@ std::string Txt::findCompanionCoverImage(const std::string& filepath) {
   }
 
   return "";
+}
+
+bool Txt::convertCoverImageToBmp(const std::string& imagePath, const std::string& destBmpPath, int thumbHeight,
+                                 bool cropped, bool originalThresholds) {
+  if (!Storage.exists(imagePath.c_str())) return false;
+
+  const bool isBmp = FsHelpers::hasBmpExtension(imagePath);
+  const bool isJpg = FsHelpers::hasJpgExtension(imagePath);
+  const bool isPng = FsHelpers::hasPngExtension(imagePath);
+  if (!isBmp && !isJpg && !isPng) return false;
+
+  HalFile src, dst;
+  if (!Storage.openFileForRead("TXT", imagePath, src) || !Storage.openFileForWrite("TXT", destBmpPath, dst)) {
+    return false;
+  }
+
+  if (isBmp) {
+    uint8_t buf[128];
+    int n;
+    while ((n = src.read(buf, sizeof(buf))) > 0) {
+      dst.write(buf, n);
+    }
+    return true;
+  }
+
+  if (thumbHeight > 0) {
+    const int targetWidth = thumbHeight * 0.6;
+    const int targetHeight = thumbHeight;
+    if (isJpg) {
+      return JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(src, dst, targetWidth, targetHeight);
+    } else if (isPng) {
+      return PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(src, dst, targetWidth, targetHeight);
+    }
+  } else {
+    if (isJpg) {
+      return JpegToBmpConverter::jpegFileToBmpStream(src, dst, cropped, originalThresholds);
+    } else if (isPng) {
+      return PngToBmpConverter::pngFileToBmpStream(src, dst, cropped, originalThresholds);
+    }
+  }
+
+  return false;
 }
 
 bool Txt::streamTxtToHtml(const std::string& filepath, Print& out) {
