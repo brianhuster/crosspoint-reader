@@ -16,8 +16,7 @@
 #include "Epub/parsers/TocNcxParser.h"
 
 Epub::Epub(std::string filepath, const std::string& cacheDir) : filepath(std::move(filepath)) {
-  const char* prefix = Txt::isTxtOrMd(this->filepath) ? "/txt_" : "/epub_";
-  cachePath = cacheDir + prefix + std::to_string(std::hash<std::string>{}(this->filepath));
+  cachePath = cacheDir + "/epub_" + std::to_string(std::hash<std::string>{}(this->filepath));
 }
 
 bool Epub::findContentOpfFile(std::string* contentOpfFile, ZipFile* sharedZip) const {

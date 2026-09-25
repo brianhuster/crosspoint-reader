@@ -220,41 +220,9 @@ bool Txt::streamTxtToHtml(const std::string& filepath, Print& out) {
   return true;
 }
 
-namespace {
-void migrateLegacyTxtProgress(const std::string& cachePath) {
-  const std::string progressPath = cachePath + "/progress.bin";
-  HalFile f;
-  if (Storage.openFileForRead("TXT", progressPath, f)) {
-    if (f.size() == 4) {
-      uint8_t data[4];
-      if (f.read(data, sizeof(data)) == 4 && data[2] == 0 && data[3] == 0) {
-        f.close();
-        // Convert to EPUB 6-byte format to avoid confusion with legacy txt
-        // progress format that has 4 bytes
-        uint8_t migrated[6] = {0, 0, data[0], data[1], 0, 0};
-        HalFile out;
-        if (Storage.openFileForWrite("TXT", progressPath, out)) {
-          if (out.write(migrated, sizeof(migrated)) != sizeof(migrated)) {
-            LOG_ERR("TXT", "Failed to write migrated TXT progress");
-          } else {
-            LOG_DBG("TXT", "Migrated legacy TXT progress to EPUB format");
-          }
-        }
-      }
-    }
-  }
-
-  const std::string indexPath = cachePath + "/index.bin";
-  if (Storage.exists(indexPath.c_str())) {
-    Storage.remove(indexPath.c_str());
-  }
-}
-}  // namespace
-
 void Txt::invalidateCache(const std::string& cachePath) {
   Storage.removeDir((cachePath + "/html").c_str());
   Storage.removeDir((cachePath + "/sections").c_str());
-  Storage.remove((cachePath + "/book.bin").c_str());
 }
 
 bool Txt::validateCache(const std::string& filepath, const std::string& cachePath, size_t cachedSize) {
@@ -300,7 +268,7 @@ bool Txt::validateCache(const std::string& filepath, const std::string& cachePat
   }
 
   if (!valid) {
-    LOG_DBG("TXT", "Cache invalid for %s, wiping html, sections, and book.bin", filepath.c_str());
+    LOG_DBG("TXT", "Cache invalid for %s, wiping html and sections", filepath.c_str());
     invalidateCache(cachePath);
   }
 
@@ -314,7 +282,6 @@ bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePat
   if (!Storage.exists(cachePath.c_str())) {
     Storage.mkdir(cachePath.c_str());
   } else {
-    migrateLegacyTxtProgress(cachePath);
     invalidateCache(cachePath);
   }
 
