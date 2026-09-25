@@ -10,6 +10,8 @@
 #include <PngToBmpConverter.h>
 #include <Utf8.h>
 
+#include <cstring>
+
 bool Txt::isTxtOrMd(std::string_view path) {
   return FsHelpers::hasTxtExtension(path) || FsHelpers::hasMarkdownExtension(path);
 }
@@ -52,32 +54,44 @@ bool Txt::convertCoverImageToBmp(const std::string& imagePath, const std::string
     return false;
   }
 
+  bool success = false;
   if (isBmp) {
     uint8_t buf[128];
     int n;
+    success = true;
     while ((n = src.read(buf, sizeof(buf))) > 0) {
-      dst.write(buf, n);
+      if (dst.write(buf, n) != static_cast<size_t>(n)) {
+        success = false;
+        break;
+      }
     }
-    return true;
-  }
-
-  if (thumbHeight > 0) {
+    if (n < 0) {
+      success = false;
+    }
+  } else if (thumbHeight > 0) {
     const int targetWidth = thumbHeight * 0.6;
     const int targetHeight = thumbHeight;
     if (isJpg) {
-      return JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(src, dst, targetWidth, targetHeight);
+      success = JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(src, dst, targetWidth, targetHeight);
     } else if (isPng) {
-      return PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(src, dst, targetWidth, targetHeight);
+      success = PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(src, dst, targetWidth, targetHeight);
     }
   } else {
     if (isJpg) {
-      return JpegToBmpConverter::jpegFileToBmpStream(src, dst, cropped, originalThresholds);
+      success = JpegToBmpConverter::jpegFileToBmpStream(src, dst, cropped, originalThresholds);
     } else if (isPng) {
-      return PngToBmpConverter::pngFileToBmpStream(src, dst, cropped, originalThresholds);
+      success = PngToBmpConverter::pngFileToBmpStream(src, dst, cropped, originalThresholds);
     }
   }
 
-  return false;
+  src.close();
+  dst.close();
+
+  if (!success) {
+    Storage.remove(destBmpPath.c_str());
+  }
+
+  return success;
 }
 
 bool Txt::streamTxtToHtml(const std::string& filepath, Print& out) {
@@ -124,7 +138,13 @@ bool Txt::streamTxtToHtml(const std::string& filepath, Print& out) {
     }
   };
 
-  writeStr("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE html>\n<html>\n<head><title>");
+  writeStr("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
+  char verComment[40];
+  const char* tagPrefix = FsHelpers::hasMarkdownExtension(filepath) ? "MD_CACHE_VERSION" : "TXT_CACHE_VERSION";
+  const uint8_t ver = FsHelpers::hasMarkdownExtension(filepath) ? MD_CACHE_VERSION : TXT_CACHE_VERSION;
+  snprintf(verComment, sizeof(verComment), "<!-- %s: %u -->\n", tagPrefix, ver);
+  writeStr(verComment);
+  writeStr("<!DOCTYPE html>\n<html>\n<head><title>");
   std::string title = FsHelpers::getFileNameWithoutExtension(filepath);
   for (char c : title) {
     if (c == '&')
@@ -231,6 +251,62 @@ void migrateLegacyTxtProgress(const std::string& cachePath) {
 }
 }  // namespace
 
+void Txt::invalidateCache(const std::string& cachePath) {
+  Storage.removeDir((cachePath + "/html").c_str());
+  Storage.removeDir((cachePath + "/sections").c_str());
+  Storage.remove((cachePath + "/book.bin").c_str());
+}
+
+bool Txt::validateCache(const std::string& filepath, const std::string& cachePath, size_t cachedSize) {
+  bool valid = true;
+
+  // 1. If html/0.html exists, check its embedded version comment
+  const std::string htmlPath = cachePath + "/html/0.html";
+  if (Storage.exists(htmlPath.c_str())) {
+    HalFile htmlFile;
+    if (Storage.openFileForRead("TXT", htmlPath, htmlFile)) {
+      char header[80] = {0};
+      const int bytesRead = htmlFile.read(header, sizeof(header) - 1);
+      if (bytesRead > 0) {
+        header[bytesRead] = '\0';
+        char expectedTag[32];
+        const char* tagPrefix = FsHelpers::hasMarkdownExtension(filepath) ? "MD_CACHE_VERSION" : "TXT_CACHE_VERSION";
+        const uint8_t ver = FsHelpers::hasMarkdownExtension(filepath) ? MD_CACHE_VERSION : TXT_CACHE_VERSION;
+        snprintf(expectedTag, sizeof(expectedTag), "<!-- %s: %u -->", tagPrefix, ver);
+        if (strstr(header, expectedTag) == nullptr) {
+          LOG_DBG("TXT", "HTML cache version mismatch or missing, invalidating: %s", htmlPath.c_str());
+          valid = false;
+        }
+      } else {
+        valid = false;
+      }
+    } else {
+      valid = false;
+    }
+  }
+
+  // 2. Check if source file size changed
+  if (valid && cachedSize > 0) {
+    HalFile rawFile;
+    if (Storage.openFileForRead("TXT", filepath, rawFile)) {
+      if (rawFile.size() != cachedSize) {
+        LOG_DBG("TXT", "File size changed (%u vs cached %u), invalidating cache", static_cast<uint32_t>(rawFile.size()),
+                static_cast<uint32_t>(cachedSize));
+        valid = false;
+      }
+    } else {
+      valid = false;
+    }
+  }
+
+  if (!valid) {
+    LOG_DBG("TXT", "Cache invalid for %s, wiping html, sections, and book.bin", filepath.c_str());
+    invalidateCache(cachePath);
+  }
+
+  return valid;
+}
+
 bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePath,
                         std::unique_ptr<BookMetadataCache>& bookMetadataCache) {
   LOG_DBG("TXT", "Building metadata cache for TXT: %s", filepath.c_str());
@@ -239,6 +315,7 @@ bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePat
     Storage.mkdir(cachePath.c_str());
   } else {
     migrateLegacyTxtProgress(cachePath);
+    invalidateCache(cachePath);
   }
 
   if (!bookMetadataCache->beginWrite()) {
