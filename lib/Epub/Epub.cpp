@@ -445,6 +445,14 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   // Try to load existing cache first
   if (bookMetadataCache->load()) {
     if (Txt::isTxtOrMd(filepath)) {
+      if (!Txt::validateCache(filepath, cachePath, bookMetadataCache->getCumulativeSize(0))) {
+        LOG_DBG("EBP", "TXT/MD cache invalid or outdated: %s", filepath.c_str());
+        if (!buildIfMissing) {
+          return false;
+        }
+        bookMetadataCache.reset(new BookMetadataCache(cachePath));
+        return Txt::buildTxtCache(filepath, cachePath, bookMetadataCache);
+      }
       LOG_DBG("EBP", "Loaded TXT/MD from cache: %s", filepath.c_str());
       return true;
     }
