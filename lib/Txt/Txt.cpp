@@ -156,11 +156,11 @@ bool Txt::streamTxtToHtml(const std::string& filepath, Print& out) {
     else
       writeByte(static_cast<uint8_t>(c));
   }
-  writeStr("</title></head>\n<body>\n<p>");
+  writeStr("</title></head>\n<body>\n");
 
   bool isStart = true;
-  bool startedParagraphText = false;
-  int consecutiveNewlines = 0;
+  bool atLineStart = true;
+  size_t pendingSpaces = 0;
   int bytesRead = 0;
 
   while ((bytesRead = src.read(inBuf.get(), IN_BUF_SIZE)) > 0) {
@@ -175,20 +175,31 @@ bool Txt::streamTxtToHtml(const std::string& filepath, Print& out) {
     for (int i = startIdx; i < bytesRead; i++) {
       uint8_t b = inBuf[i];
       if (b == '\r') continue;
+
       if (b == '\n') {
-        consecutiveNewlines++;
-        if (consecutiveNewlines == 2 && startedParagraphText) {
-          writeStr("</p>\n<p>");
-          startedParagraphText = false;
+        pendingSpaces = 0;
+        writeStr("<br />");
+        atLineStart = true;
+        continue;
+      }
+
+      if (b == ' ') {
+        if (atLineStart) {
+          writeStr("&nbsp;");
+        } else {
+          pendingSpaces++;
         }
         continue;
       }
 
-      if (consecutiveNewlines == 1 && startedParagraphText) {
+      if (pendingSpaces > 0) {
+        for (size_t s = 0; s < pendingSpaces - 1; s++) {
+          writeStr("&nbsp;");
+        }
         writeByte(' ');
+        pendingSpaces = 0;
       }
-      consecutiveNewlines = 0;
-      startedParagraphText = true;
+      atLineStart = false;
 
       if (b == '&') {
         writeStr("&amp;");
@@ -209,7 +220,7 @@ bool Txt::streamTxtToHtml(const std::string& filepath, Print& out) {
     return false;
   }
 
-  writeStr("</p>\n</body>\n</html>\n");
+  writeStr("\n</body>\n</html>\n");
   flushOut();
   if (!outputOk) {
     LOG_ERR("TXT", "Failed to stream complete HTML (write error or disk full)");
