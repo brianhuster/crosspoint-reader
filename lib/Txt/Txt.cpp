@@ -1,6 +1,5 @@
 #include "Txt.h"
 
-#include <BufferedFile.h>
 #include <Epub/BookMetadataCache.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
@@ -8,9 +7,12 @@
 #include <Logging.h>
 #include <Memory.h>
 #include <PngToBmpConverter.h>
+#include <Serialization.h>
 #include <Utf8.h>
 
 #include <cstring>
+
+#include "TxtToHtml.h"
 
 bool Txt::isTxtOrMd(std::string_view path) {
   return FsHelpers::hasTxtExtension(path) || FsHelpers::hasMarkdownExtension(path);
@@ -105,130 +107,12 @@ bool Txt::streamTxtToHtml(const std::string& filepath, Print& out) {
   const size_t srcSize = src.size();
   LOG_DBG("TXT", "Converting TXT/MD to HTML: %s (%zu bytes)", filepath.c_str(), srcSize);
 
-  constexpr size_t IN_BUF_SIZE = 8192;
-  constexpr size_t OUT_BUF_SIZE = 8192;
+  const bool ok = TxtToHtml::stream(
+      filepath, &src, [](void* ctx, uint8_t* buf, size_t size) { return static_cast<HalFile*>(ctx)->read(buf, size); },
+      out);
 
-  auto inBuf = makeUniqueNoThrow<uint8_t[]>(IN_BUF_SIZE);
-  auto outBuf = makeUniqueNoThrow<uint8_t[]>(OUT_BUF_SIZE);
-  if (!inBuf || !outBuf) {
-    LOG_ERR("TXT", "OOM: TXT/MD HTML streaming buffers");
-    return false;
-  }
-
-  size_t outPos = 0;
-  size_t totalBytesOut = 0;
-  bool outputOk = true;
-  auto flushOut = [&]() {
-    if (outPos > 0) {
-      const size_t written = out.write(outBuf.get(), outPos);
-      outputOk = outputOk && (written == outPos);
-      totalBytesOut += written;
-      outPos = 0;
-    }
-  };
-
-  auto writeByte = [&](uint8_t b) {
-    outBuf[outPos++] = b;
-    if (outPos == OUT_BUF_SIZE) flushOut();
-  };
-
-  auto writeStr = [&](std::string_view s) {
-    for (char c : s) {
-      writeByte(static_cast<uint8_t>(c));
-    }
-  };
-
-  writeStr("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
-  char verComment[40];
-  const char* tagPrefix = FsHelpers::hasMarkdownExtension(filepath) ? "MD_CACHE_VERSION" : "TXT_CACHE_VERSION";
-  const uint8_t ver = FsHelpers::hasMarkdownExtension(filepath) ? MD_CACHE_VERSION : TXT_CACHE_VERSION;
-  snprintf(verComment, sizeof(verComment), "<!-- %s: %u -->\n", tagPrefix, ver);
-  writeStr(verComment);
-  writeStr("<!DOCTYPE html>\n<html>\n<head><title>");
-  std::string title = FsHelpers::getFileNameWithoutExtension(filepath);
-  for (char c : title) {
-    if (c == '&')
-      writeStr("&amp;");
-    else if (c == '<')
-      writeStr("&lt;");
-    else if (c == '>')
-      writeStr("&gt;");
-    else
-      writeByte(static_cast<uint8_t>(c));
-  }
-  writeStr("</title></head>\n<body>\n");
-
-  bool isStart = true;
-  bool atLineStart = true;
-  size_t pendingSpaces = 0;
-  int bytesRead = 0;
-
-  while ((bytesRead = src.read(inBuf.get(), IN_BUF_SIZE)) > 0) {
-    int startIdx = 0;
-    if (isStart) {
-      isStart = false;
-      if (bytesRead >= 3 && inBuf[0] == 0xEF && inBuf[1] == 0xBB && inBuf[2] == 0xBF) {
-        startIdx = 3;
-      }
-    }
-
-    for (int i = startIdx; i < bytesRead; i++) {
-      uint8_t b = inBuf[i];
-      if (b == '\r') continue;
-
-      if (b == '\n') {
-        pendingSpaces = 0;
-        writeStr("<br />");
-        atLineStart = true;
-        continue;
-      }
-
-      if (b == ' ') {
-        if (atLineStart) {
-          writeStr("&nbsp;");
-        } else {
-          pendingSpaces++;
-        }
-        continue;
-      }
-
-      if (pendingSpaces > 0) {
-        for (size_t s = 0; s < pendingSpaces - 1; s++) {
-          writeStr("&nbsp;");
-        }
-        writeByte(' ');
-        pendingSpaces = 0;
-      }
-      atLineStart = false;
-
-      if (b == '&') {
-        writeStr("&amp;");
-      } else if (b == '<') {
-        writeStr("&lt;");
-      } else if (b == '>') {
-        writeStr("&gt;");
-      } else if (b < 0x20 && b != '\t') {
-        writeByte(' ');
-      } else {
-        writeByte(b);
-      }
-    }
-  }
-
-  if (bytesRead < 0) {
-    LOG_ERR("TXT", "Read error while streaming TXT/MD: %s", filepath.c_str());
-    return false;
-  }
-
-  writeStr("\n</body>\n</html>\n");
-  flushOut();
-  if (!outputOk) {
-    LOG_ERR("TXT", "Failed to stream complete HTML (write error or disk full)");
-    return false;
-  }
-  LOG_DBG("TXT", "Converted TXT/MD to HTML in %lu ms (%zu bytes in -> %zu bytes out)", millis() - t0, srcSize,
-          totalBytesOut);
-  return true;
+  LOG_DBG("TXT", "Converted TXT/MD to HTML in %lu ms (%zu bytes in)", millis() - t0, srcSize);
+  return ok;
 }
 
 void Txt::invalidateCache(const std::string& cachePath) {
