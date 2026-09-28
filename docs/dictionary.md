@@ -15,6 +15,9 @@ A dictionary folder must contain:
 
 Not supported: dictionaries with 64-bit index offsets (`idxoffsetbits=64` in the `.ifo` — rare, and rejected with an error).
 
+> [!WARNING]  
+> On devices without PSRAM, such as the XTEINK X4 and XTEINK X3, we recommend unzipping `.dict.dz` files to `.dict` to avoid out-of-memory crashes.
+
 ## Setting Up a Dictionary
 
 1. Copy your dictionary folder(s) to `/dictionaries/` on the SD card — one dictionary per folder, e.g. `/dictionaries/webster/webster.idx` + `webster.dict.dz`. A hidden `/.dictionaries/` folder (dot-prefixed) works the same way, for keeping it out of the file browser.
