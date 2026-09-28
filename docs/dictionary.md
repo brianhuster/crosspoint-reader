@@ -16,7 +16,8 @@ A dictionary folder must contain:
 Not supported: dictionaries with 64-bit index offsets (`idxoffsetbits=64` in the `.ifo` — rare, and rejected with an error).
 
 > [!WARNING]  
-> On devices without PSRAM, such as the XTEINK X4 and XTEINK X3, we recommend unzipping `.dict.dz` files to `.dict` to reduce low-memory lookup failures.
+> [!NOTE]  
+> If you use .dict.dz and Crosspoint failed to load your dictionary with error message "Not enough memory", try unzipping it
 
 ## Setting Up a Dictionary
 
