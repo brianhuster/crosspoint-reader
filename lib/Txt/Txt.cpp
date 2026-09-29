@@ -19,9 +19,7 @@ bool Txt::isTxtOrMd(std::string_view path) {
 }
 
 std::string Txt::findCompanionCoverImage(const std::string& filepath) {
-  size_t lastSlash = filepath.find_last_of('/');
-  std::string folder = (lastSlash != std::string::npos) ? filepath.substr(0, lastSlash) : "";
-  if (folder.empty()) folder = "/";
+  std::string folder = FsHelpers::extractFolderPath(filepath);
 
   std::string baseName = FsHelpers::getFileNameWithoutExtension(filepath);
   const char* extensions[] = {".bmp", ".jpg", ".jpeg", ".png", ".BMP", ".JPG", ".JPEG", ".PNG"};
@@ -132,11 +130,7 @@ bool Txt::validateCache(const std::string& filepath, const std::string& cachePat
       const int bytesRead = htmlFile.read(header, sizeof(header) - 1);
       if (bytesRead > 0) {
         header[bytesRead] = '\0';
-        char expectedTag[32];
-        const char* tagPrefix = FsHelpers::hasMarkdownExtension(filepath) ? "MD_CACHE_VERSION" : "TXT_CACHE_VERSION";
-        const uint8_t ver = FsHelpers::hasMarkdownExtension(filepath) ? MD_CACHE_VERSION : TXT_CACHE_VERSION;
-        snprintf(expectedTag, sizeof(expectedTag), "<!-- %s: %u -->", tagPrefix, ver);
-        if (strstr(header, expectedTag) == nullptr) {
+        if (strstr(header, TxtToHtml::cacheVersionTag(filepath)) == nullptr) {
           LOG_DBG("TXT", "HTML cache version mismatch or missing, invalidating: %s", htmlPath.c_str());
           valid = false;
         }
@@ -231,8 +225,8 @@ bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePat
 
   bookMetadataCache->cleanupTmpFiles();
 
-  bookMetadataCache.reset(new BookMetadataCache(cachePath));
-  if (!bookMetadataCache->load()) {
+  bookMetadataCache = makeUniqueNoThrow<BookMetadataCache>(cachePath);
+  if (!bookMetadataCache || !bookMetadataCache->load()) {
     LOG_ERR("TXT", "Failed to reload cache after build");
     return false;
   }

@@ -5,10 +5,11 @@
 #include <Memory.h>
 
 #include <algorithm>
-#include <cstdio>
 #include <cstring>
 
-#include "Txt.h"
+const char* TxtToHtml::cacheVersionTag(std::string_view filename) {
+  return FsHelpers::hasMarkdownExtension(filename) ? "<!-- MD_CACHE_VERSION: 1 -->" : "<!-- TXT_CACHE_VERSION: 1 -->";
+}
 
 bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)(void* ctx, uint8_t* buf, size_t size),
                        Print& out) {
@@ -23,13 +24,11 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
   }
 
   size_t outPos = 0;
-  size_t totalBytesOut = 0;
   bool outputOk = true;
   auto flushOut = [&]() {
     if (outPos > 0) {
       const size_t written = out.write(outBuf.get(), outPos);
       outputOk = outputOk && (written == outPos);
-      totalBytesOut += written;
       outPos = 0;
     }
   };
@@ -46,11 +45,8 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
   };
 
   writeStr("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
-  char verComment[40];
-  const char* tagPrefix = FsHelpers::hasMarkdownExtension(filename) ? "MD_CACHE_VERSION" : "TXT_CACHE_VERSION";
-  const uint8_t ver = FsHelpers::hasMarkdownExtension(filename) ? Txt::MD_CACHE_VERSION : Txt::TXT_CACHE_VERSION;
-  snprintf(verComment, sizeof(verComment), "<!-- %s: %u -->\n", tagPrefix, ver);
-  writeStr(verComment);
+  writeStr(cacheVersionTag(filename));
+  writeByte('\n');
   writeStr("<!DOCTYPE html>\n<html>\n<head><title>");
   std::string title = FsHelpers::getFileNameWithoutExtension(filename);
   for (char c : title) {

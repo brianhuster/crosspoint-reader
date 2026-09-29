@@ -828,9 +828,7 @@ void SleepActivity::renderCoverSleepScreen() const {
     }
 
     coverBmpPath = lastXtc.getCoverBmpPath();
-  } else if (FsHelpers::hasEpubExtension(APP_STATE.openEpubPath) ||
-             FsHelpers::hasTxtExtension(APP_STATE.openEpubPath) ||
-             FsHelpers::hasMarkdownExtension(APP_STATE.openEpubPath)) {
+  } else if (FsHelpers::hasReflowableBookExtension(APP_STATE.openEpubPath)) {
     // Handle EPUB, TXT, or Markdown file
     Epub lastEpub(APP_STATE.openEpubPath, "/.crosspoint");
     // Skip loading css since we only need metadata here
