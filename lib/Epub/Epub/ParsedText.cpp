@@ -220,6 +220,48 @@ std::vector<size_t> cjkCharacterBreakByteOffsets(const std::string& text) {
   return allowedOffsets;
 }
 
+constexpr bool isEmDash(const uint32_t cp) { return cp == 0x2014; }
+
+// Scans text for em-dashes and returns byte offsets where a line break is permitted right after
+// the dash. Multi-em dashes are kept together as an indivisible unit.
+std::vector<size_t> emDashBreakByteOffsets(const std::string& text, const bool attachToPrevious) {
+  if (text.find('\xE2') == std::string::npos) {
+    return {};
+  }
+
+  std::vector<size_t> breakOffsets;
+  const auto* ptr = reinterpret_cast<const unsigned char*>(text.c_str());
+  const auto* const start = ptr;
+  const auto* const end = ptr + text.size();
+
+  bool hasLeadingContent = attachToPrevious;
+
+  while (ptr < end) {
+    const uint32_t cp = utf8NextCodepoint(&ptr);
+    if (cp == 0) break;
+
+    if (isEmDash(cp)) {
+      while (ptr < end) {
+        const auto* const nextStart = ptr;
+        const uint32_t nextCp = utf8NextCodepoint(&ptr);
+        if (!isEmDash(nextCp)) {
+          ptr = nextStart;
+          break;
+        }
+      }
+
+      if (hasLeadingContent && ptr < end) {
+        breakOffsets.push_back(static_cast<size_t>(ptr - start));
+      }
+      hasLeadingContent = true;
+    } else {
+      hasLeadingContent = true;
+    }
+  }
+
+  return breakOffsets;
+}
+
 int computeJustifyExtra(const int spareSpace, const size_t gapCount) {
   if (gapCount < MIN_JUSTIFY_GAPS || spareSpace <= 0) return 0;
   // Distribute the spare space evenly across gaps. Do NOT bail out to 0 when the
@@ -494,6 +536,9 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
       hasCjkBreakOpportunityBetween(lastCodepoint(wordStore.view(words.back())), firstCodepoint(word))) {
     effectiveAttachToPrevious = false;
     effectiveNoSpaceBefore = true;
+  } else if (attachToPrevious && !words.empty() && isEmDash(lastCodepoint(wordStore.view(words.back())))) {
+    effectiveAttachToPrevious = true;
+    effectiveNoSpaceBefore = true;
   }
 
   // Bulk-reserve the per-token parallel arrays before a burst of pushes so they
@@ -555,6 +600,30 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
 
   // Already-bold text should stay fully bold; focus splitting would make its suffix regular later.
   if (!this->focusReadingEnabled || (baseStyle & EpdFontFamily::BOLD) != 0) {
+    if (auto breakOffsets = emDashBreakByteOffsets(word, effectiveAttachToPrevious); !breakOffsets.empty()) {
+      ensureTokenCapacity(breakOffsets.size() + 1);
+      bool firstToken = true;
+      size_t tokenStart = 0;
+      uint32_t tokenVisibleOffset = visibleTextOffset;
+      for (const size_t breakOffset : breakOffsets) {
+        if (breakOffset <= tokenStart || breakOffset > word.size()) continue;
+        const std::string_view token(word.data() + tokenStart, breakOffset - tokenStart);
+        pushToken(token, firstToken ? effectiveAttachToPrevious : true, firstToken ? effectiveNoSpaceBefore : true,
+                  /*focusBoundary=*/0, tokenVisibleOffset);
+        tokenVisibleOffset += countCodepoints(token);
+        firstToken = false;
+        tokenStart = breakOffset;
+      }
+      if (tokenStart < word.size()) {
+        pushToken(std::string_view(word).substr(tokenStart), firstToken ? effectiveAttachToPrevious : true,
+                  firstToken ? effectiveNoSpaceBefore : true, /*focusBoundary=*/0, tokenVisibleOffset);
+      }
+      if (wordStartsRtl) {
+        hasRtlWord = true;
+      }
+      return;
+    }
+
     pushToken(word, effectiveAttachToPrevious, effectiveNoSpaceBefore, /*focusBoundary=*/0, visibleTextOffset);
     if (wordStartsRtl) {
       hasRtlWord = true;

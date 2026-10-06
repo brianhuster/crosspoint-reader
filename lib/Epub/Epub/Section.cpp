@@ -57,7 +57,8 @@ namespace {
 // v49 was used by pre-release builds with a different header layout.
 // v50: Paragraph indentation width in the header for cache validation.
 // v51: Preserve paragraph continuity and top spacing across soft flushes.
-constexpr uint8_t SECTION_FILE_VERSION = 51;
+// v52: Split em-dash tokens ("foo—bar" into "foo—" and "bar") in standard reading mode to allow line breaking without gaps.
+constexpr uint8_t SECTION_FILE_VERSION = 52;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
