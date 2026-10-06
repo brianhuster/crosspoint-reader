@@ -73,7 +73,6 @@ TEST(EmDashLineBreaking, MultipleEmDashesInWordCanBreakAtEitherDash) {
   EXPECT_EQ(wordsOf(lines), expected);
 }
 
-
 TEST(EmDashLineBreaking, HyphenationOnSplitsWithoutInsertedHyphen) {
   const auto lines = layout({"foo—bar"}, /*hyphenation=*/true, 40);
   const std::vector<std::vector<std::string>> expected{{"foo—"}, {"bar"}};
