@@ -220,15 +220,9 @@ std::vector<size_t> cjkCharacterBreakByteOffsets(const std::string& text) {
   return allowedOffsets;
 }
 
-constexpr bool isEmDash(const uint32_t cp) { return cp == 0x2014; }
-
-// Scans text for em-dashes and returns byte offsets where a line break is permitted right after
-// the dash. Multi-em dashes are kept together as an indivisible unit.
-std::vector<size_t> emDashBreakByteOffsets(const std::string& text, const bool attachToPrevious) {
-  if (text.find('\xE2') == std::string::npos) {
-    return {};
-  }
-
+// Scans text for explicit hyphens or dashes and returns byte offsets where a line break is permitted right after
+// the hyphen/dash. Multi-character hyphen/dash runs are kept together as an indivisible unit.
+std::vector<size_t> explicitHyphenBreakByteOffsets(const std::string& text, const bool attachToPrevious) {
   std::vector<size_t> breakOffsets;
   const auto* ptr = reinterpret_cast<const unsigned char*>(text.c_str());
   const auto* const start = ptr;
@@ -240,11 +234,11 @@ std::vector<size_t> emDashBreakByteOffsets(const std::string& text, const bool a
     const uint32_t cp = utf8NextCodepoint(&ptr);
     if (cp == 0) break;
 
-    if (isEmDash(cp)) {
+    if (TokenBoundary::allowsBreakAfterExplicitHyphen(cp)) {
       while (ptr < end) {
         const auto* const nextStart = ptr;
         const uint32_t nextCp = utf8NextCodepoint(&ptr);
-        if (!isEmDash(nextCp)) {
+        if (!TokenBoundary::allowsBreakAfterExplicitHyphen(nextCp)) {
           ptr = nextStart;
           break;
         }
@@ -536,7 +530,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
       hasCjkBreakOpportunityBetween(lastCodepoint(wordStore.view(words.back())), firstCodepoint(word))) {
     effectiveAttachToPrevious = false;
     effectiveNoSpaceBefore = true;
-  } else if (attachToPrevious && !words.empty() && isEmDash(lastCodepoint(wordStore.view(words.back())))) {
+  } else if (attachToPrevious && !words.empty() && endsWithBreakableHyphen(wordStore.view(words.back()))) {
     effectiveAttachToPrevious = true;
     effectiveNoSpaceBefore = true;
   }
@@ -600,7 +594,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
 
   // Already-bold text should stay fully bold; focus splitting would make its suffix regular later.
   if (!this->focusReadingEnabled || (baseStyle & EpdFontFamily::BOLD) != 0) {
-    if (auto breakOffsets = emDashBreakByteOffsets(word, effectiveAttachToPrevious); !breakOffsets.empty()) {
+    if (auto breakOffsets = explicitHyphenBreakByteOffsets(word, effectiveAttachToPrevious); !breakOffsets.empty()) {
       ensureTokenCapacity(breakOffsets.size() + 1);
       bool firstToken = true;
       size_t tokenStart = 0;
