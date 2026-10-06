@@ -576,6 +576,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     uint32_t tokenVisibleOffset = visibleTextOffset;
     for (const size_t breakOffset : breakOffsets) {
       if (breakOffset <= tokenStart || breakOffset > word.size()) continue;
+      const std::string_view token(word.data() + tokenStart, breakOffset - tokenStart);
       const bool attach = firstToken ? effectiveAttachToPrevious
                                      : (!words.empty() && endsWithBreakableHyphen(wordStore.view(words.back())));
       pushToken(token, attach, firstToken ? effectiveNoSpaceBefore : true,
@@ -587,8 +588,8 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     if (tokenStart < word.size()) {
       const bool attach = firstToken ? effectiveAttachToPrevious
                                      : (!words.empty() && endsWithBreakableHyphen(wordStore.view(words.back())));
-      pushToken(std::string_view(word).substr(tokenStart), attach,
-                firstToken ? effectiveNoSpaceBefore : true, /*focusBoundary=*/0, tokenVisibleOffset);
+      pushToken(std::string_view(word).substr(tokenStart), attach, firstToken ? effectiveNoSpaceBefore : true,
+                /*focusBoundary=*/0, tokenVisibleOffset);
     }
     if (wordStartsRtl) {
       hasRtlWord = true;
