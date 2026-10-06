@@ -78,3 +78,24 @@ TEST(EmDashLineBreaking, HyphenationOnSplitsWithoutInsertedHyphen) {
   const std::vector<std::vector<std::string>> expected{{"foo—"}, {"bar"}};
   EXPECT_EQ(wordsOf(lines), expected);
 }
+
+TEST(EmDashLineBreaking, MixedCjkAndLatinSplitsAtDash) {
+  // "漢" (8 px), "字—" (16 px), "bar" (24 px). Width 30 px fits "漢字—" (24 px), but not "bar".
+  const auto lines = layout({"漢字—bar"}, /*hyphenation=*/false, 30);
+  const std::vector<std::vector<std::string>> expected{{"漢", "字—"}, {"bar"}};
+  EXPECT_EQ(wordsOf(lines), expected);
+}
+
+TEST(EmDashLineBreaking, MixedLatinAndCjkSplitsAtDash) {
+  // "foo—" (32 px), "漢" (8 px), "字" (8 px). Width 35 px fits "foo—", but wraps CJK text.
+  const auto lines = layout({"foo—漢字"}, /*hyphenation=*/false, 35);
+  const std::vector<std::vector<std::string>> expected{{"foo—"}, {"漢", "字"}};
+  EXPECT_EQ(wordsOf(lines), expected);
+}
+
+TEST(EmDashLineBreaking, MixedCjkMultiEmDashStaysTogether) {
+  // "漢" (8 px), "字——" (24 px), "bar" (24 px). Width 35 px fits "漢字——", but wraps "bar".
+  const auto lines = layout({"漢字——bar"}, /*hyphenation=*/false, 35);
+  const std::vector<std::vector<std::string>> expected{{"漢", "字——"}, {"bar"}};
+  EXPECT_EQ(wordsOf(lines), expected);
+}

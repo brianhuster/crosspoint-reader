@@ -67,6 +67,9 @@ uint32_t lastCodepoint(const std::string_view word) {
 bool containsSoftHyphen(const std::string_view word) { return word.find(SOFT_HYPHEN_UTF8) != std::string_view::npos; }
 
 bool isNoBreakBeforeCjkPunctuation(const uint32_t cp) {
+  if (TokenBoundary::allowsBreakAfterExplicitHyphen(cp)) {
+    return true;
+  }
   switch (cp) {
     case '.':
     case ',':
@@ -155,6 +158,9 @@ uint32_t countCodepoints(const std::string_view text) {
 }
 
 bool cjkBoundaryAllowsBreak(const uint32_t leftCp, const uint32_t rightCp) {
+  if (TokenBoundary::allowsBreakAfterExplicitHyphen(leftCp)) {
+    return !isNoBreakBeforeCjkPunctuation(rightCp);
+  }
   if (!utf8IsCjkBreakable(leftCp) && !utf8IsCjkBreakable(rightCp)) return false;
   if (isNoBreakAfterCjkPunctuation(leftCp) || isNoBreakBeforeCjkPunctuation(rightCp)) return false;
   if (utf8IsCombiningMark(rightCp)) return false;
@@ -164,6 +170,9 @@ bool cjkBoundaryAllowsBreak(const uint32_t leftCp, const uint32_t rightCp) {
 // Korean separates words with spaces, so a boundary touching Hangul is not a gap-less break inside
 // a line. hangulLineEndBreaks() still lets a Hangul word split there at a line end.
 bool hasCjkBreakOpportunityBetween(const uint32_t leftCp, const uint32_t rightCp) {
+  if (TokenBoundary::allowsBreakAfterExplicitHyphen(leftCp)) {
+    return cjkBoundaryAllowsBreak(leftCp, rightCp);
+  }
   if (utf8IsHangul(leftCp) || utf8IsHangul(rightCp)) return false;
   return cjkBoundaryAllowsBreak(leftCp, rightCp);
 }
@@ -526,12 +535,12 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   // previous one in the source) may be turned into a gap-less break opportunity. When real
   // whitespace separated the two words, that space is content and must be rendered: Korean
   // is a space-delimited script written in Hangul, which utf8IsCjkBreakable() covers.
-  if (attachToPrevious && !words.empty() &&
-      hasCjkBreakOpportunityBetween(lastCodepoint(wordStore.view(words.back())), firstCodepoint(word))) {
-    effectiveAttachToPrevious = false;
-    effectiveNoSpaceBefore = true;
-  } else if (attachToPrevious && !words.empty() && endsWithBreakableHyphen(wordStore.view(words.back()))) {
+  if (attachToPrevious && !words.empty() && endsWithBreakableHyphen(wordStore.view(words.back()))) {
     effectiveAttachToPrevious = true;
+    effectiveNoSpaceBefore = true;
+  } else if (attachToPrevious && !words.empty() &&
+             hasCjkBreakOpportunityBetween(lastCodepoint(wordStore.view(words.back())), firstCodepoint(word))) {
+    effectiveAttachToPrevious = false;
     effectiveNoSpaceBefore = true;
   }
 
@@ -567,15 +576,18 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     uint32_t tokenVisibleOffset = visibleTextOffset;
     for (const size_t breakOffset : breakOffsets) {
       if (breakOffset <= tokenStart || breakOffset > word.size()) continue;
-      const std::string_view token(word.data() + tokenStart, breakOffset - tokenStart);
-      pushToken(token, firstToken ? effectiveAttachToPrevious : false, firstToken ? effectiveNoSpaceBefore : true,
+      const bool attach = firstToken ? effectiveAttachToPrevious
+                                     : (!words.empty() && endsWithBreakableHyphen(wordStore.view(words.back())));
+      pushToken(token, attach, firstToken ? effectiveNoSpaceBefore : true,
                 /*focusBoundary=*/0, tokenVisibleOffset);
       tokenVisibleOffset += countCodepoints(token);
       firstToken = false;
       tokenStart = breakOffset;
     }
     if (tokenStart < word.size()) {
-      pushToken(std::string_view(word).substr(tokenStart), firstToken ? effectiveAttachToPrevious : false,
+      const bool attach = firstToken ? effectiveAttachToPrevious
+                                     : (!words.empty() && endsWithBreakableHyphen(wordStore.view(words.back())));
+      pushToken(std::string_view(word).substr(tokenStart), attach,
                 firstToken ? effectiveNoSpaceBefore : true, /*focusBoundary=*/0, tokenVisibleOffset);
     }
     if (wordStartsRtl) {
