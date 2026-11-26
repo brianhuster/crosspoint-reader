@@ -196,8 +196,19 @@ void SdCardFontSystem::begin(GfxRenderer& renderer, const EpdFontFamily& small, 
   };
   SETTINGS.sdFontResolverCtx = this;
 
-  // If user has a saved SD font selection, load it
-  if (SETTINGS.sdFontFamilyName[0] != '\0') {
+#ifdef BOARD_HAS_PSRAM
+  // On PSRAM boards, load the custom UI font first. When it is active, UI text
+  // does not borrow fallbacks from the reading font, so loading the reading
+  // font can wait until a screen actually needs it.
+  applyUiFont(renderer, SETTINGS.uiFontFamilyName);
+  const bool loadReaderAtBoot = activeUiFontName_[0] == '\0';
+#else
+  // On no-PSRAM boards, load the saved SD reading font first while internal
+  // DRAM is unfragmented and before optional UI fonts claim memory.
+  const bool loadReaderAtBoot = true;
+#endif
+
+  if (loadReaderAtBoot && SETTINGS.sdFontFamilyName[0] != '\0') {
     const auto* family = registry_.findFamily(SETTINGS.sdFontFamilyName);
     if (family) {
 #if CROSSPOINT_VECTOR_FONTS
@@ -205,11 +216,14 @@ void SdCardFontSystem::begin(GfxRenderer& renderer, const EpdFontFamily& small, 
         // Vector (.ttf/.otf) families load through the FreeInkFont path; the
         // .cpfont manager below rejects them ("Invalid magic bytes") and would
         // wipe the user's selection on every boot.
-        loadTtfFamily(*family, renderer, /*registryWasDirty=*/false, /*setupFallbacks=*/false);
+        loadTtfFamily(*family, renderer, /*registryWasDirty=*/false, /*setupFallbacks=*/true);
       } else
 #endif
           if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize)) {
         snapFontPointSizeTo(manager_.currentPointSize());
+#ifdef BOARD_HAS_PSRAM
+        setupUiFallbacks(renderer);
+#endif
         LOG_DBG("SDFS", "Loaded SD card font family: %s", SETTINGS.sdFontFamilyName);
       } else {
         LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", SETTINGS.sdFontFamilyName);
@@ -220,8 +234,10 @@ void SdCardFontSystem::begin(GfxRenderer& renderer, const EpdFontFamily& small, 
     }
   }
 
+#ifndef BOARD_HAS_PSRAM
   // The optional UI faces must fit alongside the saved reader font.
   applyUiFont(renderer, SETTINGS.uiFontFamilyName);
+#endif
   LOG_DBG("SDFS", "SD font system ready (%d families discovered)", registry_.getFamilyCount());
 }
 

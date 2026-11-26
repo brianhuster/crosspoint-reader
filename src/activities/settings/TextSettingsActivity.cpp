@@ -16,6 +16,7 @@
 #include "ReaderLineSpacing.h"
 #include "SdCardFontSystem.h"
 #include "TextSettingsPreview.h"
+#include "activities/RenderLock.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -79,6 +80,13 @@ const char* TextSettingsActivity::tabLabel(const int index) const { return I18N.
 
 void TextSettingsActivity::onEnter() {
   UiTabListActivity::onEnter();
+
+#ifdef BOARD_HAS_PSRAM
+  {
+    RenderLock lock;
+    sdFontSystem.ensureLoaded(renderer);
+  }
+#endif
 
   metrics_ = UITheme::getInstance().getMetrics();
   const Rect safeArea = UITheme::getInstance().getScreenSafeArea(renderer, true, false);

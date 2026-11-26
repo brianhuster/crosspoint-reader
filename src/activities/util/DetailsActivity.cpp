@@ -12,6 +12,8 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "SdCardFontSystem.h"
+#include "activities/RenderLock.h"
 #include "activities/reader/DictionaryDefinitionActivity.h"
 #include "components/CatalogScreens.h"
 #include "components/UITheme.h"
@@ -33,6 +35,12 @@ DetailsActivity::DetailsActivity(GfxRenderer& renderer, MappedInputManager& mapp
 
 void DetailsActivity::onEnter() {
   Activity::onEnter();
+#ifdef BOARD_HAS_PSRAM
+  if (spec.descriptionHtml) {
+    RenderLock lock;
+    sdFontSystem.ensureLoaded(renderer);
+  }
+#endif
   ActivityResult cancelled;
   cancelled.isCancelled = true;
   setResult(std::move(cancelled));

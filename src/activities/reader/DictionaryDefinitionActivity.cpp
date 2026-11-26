@@ -18,6 +18,8 @@
 #include "CrossPointSettings.h"
 #include "HapticFeedback.h"
 #include "ReaderUtils.h"
+#include "SdCardFontSystem.h"
+#include "activities/RenderLock.h"
 #include "components/HeaderBackTapTarget.h"
 #include "components/UITheme.h"
 #include "util/DictHtmlPages.h"
@@ -133,6 +135,12 @@ bool DictionaryDefinitionActivity::enableLookup(Dictionary& dictionary, std::str
 
 void DictionaryDefinitionActivity::onEnter() {
   Activity::onEnter();
+#ifdef BOARD_HAS_PSRAM
+  {
+    RenderLock lock;
+    sdFontSystem.ensureLoaded(renderer);
+  }
+#endif
   initialLayoutFailed = !prepareDefinition(content);
   if (initialLayoutFailed) {
     content.lines.clear();
